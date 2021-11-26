@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <cctype>
 #include <mutex>
 #include <atomic>
@@ -12,6 +13,7 @@
 #include <codecvt>
 #include <thread>
 #include "fs8.h"
+#include <filesystem>
 
 
 #define FS_MAX_FILENAMES_BINARY_SIZE (64 << 20) // max file table = 16 MB (~320000 files)
@@ -238,6 +240,9 @@ static bool read_bytes(const char ** cursor, int & bytes_left, void * ptr, size_
 
 int serialize_fs_file_infos(const FileInfosMap & fs_file_infos, vector<char> & bytes)
 {
+  unordered_set<string> allNames;
+  bool hasDuplicates = false;
+
   bytes.clear();
   bytes.resize(sizeof(uint32_t));
   for (auto & f : fs_file_infos)
@@ -250,6 +255,14 @@ int serialize_fs_file_infos(const FileInfosMap & fs_file_infos, vector<char> & b
         ch = '/';
     }
 
+    if (allNames.find(lowerCaseName) != allNames.end())
+    {
+      Fs8FileSystem::errorLogCallback((string("Duplicate file name: ") + lowerCaseName).c_str());
+      hasDuplicates = true;
+    }
+    else
+      allNames.insert(lowerCaseName);
+
     int16_t fileNameLength = int16_t(lowerCaseName.length());
     append_bytes(bytes, &fileNameLength, sizeof(fileNameLength));
     append_bytes(bytes, lowerCaseName.c_str(), lowerCaseName.length());
@@ -259,7 +272,7 @@ int serialize_fs_file_infos(const FileInfosMap & fs_file_infos, vector<char> & b
   uint32_t size = uint32_t(bytes.size()) - 4;
   memcpy(&bytes[0], &size, sizeof(size));
 
-  return int(bytes.size());
+  return int(bytes.size()) && !hasDuplicates;
 }
 
 
@@ -835,20 +848,76 @@ bool Fs8FileSystem::checkFs8FileSystemSignatures(const char * fs8_file_name_utf8
 
 
 bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<string> & file_names,
-  const char * out_file_name_utf8_, int compression_level, bool write_as_hex32)
+  const char * out_file_name_utf8_, int compression_level, bool write_as_hex32, vector<string> * ignore_list)
 {
   vector<pair<string, string>> namePairs;
   for (const auto & n : file_names)
     namePairs.emplace_back(make_pair(n, string()));
-  return createFs8FromFiles(dir_, namePairs, out_file_name_utf8_, compression_level, write_as_hex32);
+  return createFs8FromFiles(dir_, namePairs, out_file_name_utf8_, compression_level, write_as_hex32, ignore_list);
+}
+
+static bool recurseve_find_files(const string & dir, vector<string> & res)
+{
+  error_code errCode;
+  for (auto & dirEntry : filesystem::recursive_directory_iterator::recursive_directory_iterator(string_to_wstring(dir), errCode))
+    if (dirEntry.is_regular_file())
+    {
+      string s = wstring_to_string(dirEntry.path().generic_wstring());
+      if (s.length() > dir.length())
+        res.push_back(string(s.c_str() + dir.length() + 1));
+    }
+
+  if (errCode.value() != 0)
+    Fs8FileSystem::errorLogCallback(errCode.message().c_str());
+
+  return errCode.value() == 0;
+}
+
+static bool expand_file_masks(const string & dir, vector<pair<string, string>> & file_names)
+{
+  for (int i = (file_names.size()) - 1; i >= 0; i--)
+  {
+    pair<string, string> namePair = file_names[i];
+    string name = namePair.first;
+    string archiveName = namePair.second;
+    if (!name.empty() && name.back() == '*')
+    {
+      name.pop_back();
+      if (!archiveName.empty() && archiveName.back() != '*')
+      {
+        Fs8FileSystem::errorLogCallback((string("Expected '*' at end of in-archive file name ") + archiveName).c_str());
+        return false;
+      }
+      if (!archiveName.empty() && archiveName.back() == '*')
+        archiveName.pop_back();
+      file_names.erase(file_names.begin() + i);
+
+      vector<string> found;
+      if (!recurseve_find_files(dir + name, found))
+      {
+        Fs8FileSystem::errorLogCallback("recurseve_find_files() failed");
+        return false;
+      }
+
+      for (auto & f : found)
+        file_names.push_back(make_pair(f, archiveName + f));
+    }
+  }
+
+  return true;
 }
 
 
-bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<string, string>> & file_names,
-  const char * out_file_name_utf8_, int compression_level, bool write_as_hex32)
+bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<string, string>> & file_names_,
+  const char * out_file_name_utf8_, int compression_level, bool write_as_hex32, vector<string> * ignore_list)
 {
+  vector<pair<string, string>> file_names = file_names_;
+
   string dir(dir_);
   string out_file_name_utf8(out_file_name_utf8_);
+
+  if (!expand_file_masks(dir_, file_names))
+    return false;
 
   FileInfosMap fs_file_infos;
 
@@ -868,6 +937,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
   {
     Fs8FileSystem::errorLogCallback((string("Cannot write to file ") + out_file_name_utf8).c_str());
     fclose(outf);
+    FS_UNLINK(out_file_name_utf8.c_str());
     return false;
   }
 
@@ -876,6 +946,36 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
     string name = namePair.first;
     string archiveName = namePair.second.empty() ? name : namePair.second;
 
+    for (auto & ch : name)
+      if (ch == '\\')
+        ch = '/';
+
+    if (ignore_list && !name.empty())
+    {
+      bool skip = false;
+      for (auto & ignore : *ignore_list)
+      {
+        if (ignore == ".")
+          if (name[0] == '.' || name.find("/.") != string::npos)
+            skip = true;
+
+        string s_ignore = string("/") + ignore;
+        string ignore_s = ignore + "/";
+        string s_ignore_s = string("/") + ignore + "/";
+        if (name.find(s_ignore_s) != string::npos || name.find(ignore_s) == 0 || name == ignore)
+          skip = true;
+        size_t pos = name.rfind(s_ignore);
+        if (pos != string::npos && pos + s_ignore.length() == name.length())
+          skip = true;
+
+        if (skip)
+          break;
+      }
+
+      if (skip)
+        continue;
+    }
+
     string fullName = dir.empty() ? name : dir + "/" + name;
     size_t fileSize = 0;
     const char * fileData = read_whole_file(fullName.c_str(), fileSize);
@@ -883,6 +983,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
     {
       Fs8FileSystem::errorLogCallback((string("Cannot read file ") + fullName).c_str());
       fclose(outf);
+      FS_UNLINK(out_file_name_utf8.c_str());
       return false;
     }
 
@@ -904,6 +1005,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
       {
         Fs8FileSystem::errorLogCallback((string("Cannot write to file ") + out_file_name_utf8).c_str());
         fclose(outf);
+        FS_UNLINK(out_file_name_utf8.c_str());
         return false;
       }
 
@@ -917,6 +1019,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
   {
     Fs8FileSystem::errorLogCallback((string("Cannot write to file ") + out_file_name_utf8).c_str());
     fclose(outf);
+    FS_UNLINK(out_file_name_utf8.c_str());
     return false;
   }
 
@@ -935,6 +1038,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
   if (!sign_file_fhash(out_file_name_utf8.c_str()))
   {
     Fs8FileSystem::errorLogCallback((string("Cannot sign file ") + out_file_name_utf8).c_str());
+    FS_UNLINK(out_file_name_utf8.c_str());
     return false;
   }
 
@@ -942,6 +1046,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
     if (!convert_file_to_hex32(out_file_name_utf8.c_str()))
     {
       Fs8FileSystem::errorLogCallback((string("Cannot convert file to hex32 ") + out_file_name_utf8).c_str());
+      FS_UNLINK(out_file_name_utf8.c_str());
       return false;
     }
 
@@ -969,6 +1074,16 @@ bool Fs8FileSystem::initalizeFromMemory(void * data, int64_t size)
   return partition != nullptr;
 }
 
+
+void Fs8FileSystem::getAllFileNames(vector<string> & out_file_names)
+{
+  out_file_names.clear();
+  lock_guard<recursive_mutex> lock(partitions_lock);
+  for (auto & s : partition->fileInfos)
+    out_file_names.push_back(s.first);
+}
+
+
 bool Fs8FileSystem::isFileExists(const char * file_name)
 {
   if (!partition || !file_name)
@@ -976,7 +1091,7 @@ bool Fs8FileSystem::isFileExists(const char * file_name)
   string fname(file_name);
   normalize_file_name(fname);
   partition->lastAccessTime = chrono::steady_clock::now();
-  lock_guard<recursive_mutex> lock(partition->decompression_lock);
+  lock_guard<recursive_mutex> lock(partitions_lock);
   return partition->fileInfos.find(fname) != partition->fileInfos.end();
 }
 
