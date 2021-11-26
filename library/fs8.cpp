@@ -984,7 +984,7 @@ int64_t Fs8FileSystem::getFileSize(const char * file_name)
 {
   if (!partition || !file_name)
     return false;
-  string fname(file_name);  
+  string fname(file_name);
   normalize_file_name(fname);
   partition->lastAccessTime = chrono::steady_clock::now();
   lock_guard<recursive_mutex> lock(partition->decompression_lock);

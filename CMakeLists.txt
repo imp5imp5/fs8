@@ -31,8 +31,6 @@ ExternalProject_Add( zstd
 set(ZSTD_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/build/zstd-prefix/src/zstd-build/bin/include)
 set(ZSTD_LIBRARY ${PROJECT_SOURCE_DIR}/build/zstd-prefix/src/zstd-build/bin/bin_lib)
 
-message(WARNING "========== ZSTD_INCLUDE_DIRS=${ZSTD_INCLUDE_DIR} ZSTD_LIBRARIES=${ZSTD_LIBRARY}========")
-
 
 include_directories(
   library
