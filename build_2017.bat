@@ -1,3 +1,4 @@
+rd /s /q build
 mkdir build
 cd build
-cmake -G "Visual Studio 15 Win64" .. -DFS8_ZSTD_PATH=D:/github/zstd
+cmake -G "Visual Studio 15 Win64" ..
