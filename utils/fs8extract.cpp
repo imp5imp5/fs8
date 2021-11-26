@@ -190,11 +190,12 @@ int main(int argc, char ** argv)
     if (directory != prevDirectory)
     {
       prevDirectory = directory;
-      if (!make_path(directory))
-      {
-        printf("ERROR: Cannot create directory %s\n", extractToDir.c_str());
-        return 1;
-      }
+      if (!directory.empty())
+        if (!make_path(extractToDir + "/" + directory))
+        {
+          printf("ERROR: Cannot create directory %s\n", extractToDir.c_str());
+          return 1;
+        }
     }
 
     int64_t size = fs.getFileSize(n.c_str());
@@ -206,7 +207,11 @@ int main(int argc, char ** argv)
     }
 
     std::vector<char> bytes;
-    fs.getFileBytes(n.c_str(), bytes, false);
+    if (!fs.getFileBytes(n.c_str(), bytes, false))
+    {
+      printf("ERROR: Cannot extract file %s\n", n.c_str());
+      return 1;
+    }
     
     string fullName = string(extractToDir) + "/" + n;
     FILE * savef = FS_FOPEN(fullName.c_str(), "wb");
@@ -216,7 +221,7 @@ int main(int argc, char ** argv)
       return 1;
     }
 
-    if (fwrite(&bytes[0], bytes.size(), 1, savef) != 1)
+    if (bytes.size() > 0 && fwrite(&bytes[0], bytes.size(), 1, savef) != 1)
     {
       printf("ERROR: Cannot write to file %s\n", fullName.c_str());
       fclose(savef);

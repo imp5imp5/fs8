@@ -933,7 +933,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
 
   // ID: 4,  ver: 4,  file_table_offet: 8,  sigrantures_offset: 8
   const char * header = "FS8.1   ********XXXXXXXX";
-  if (fwrite(header, 16, 1, outf) != 1)
+  if (fwrite(header, strlen(header), 1, outf) != 1)
   {
     Fs8FileSystem::errorLogCallback((string("Cannot write to file ") + out_file_name_utf8).c_str());
     fclose(outf);
@@ -1160,7 +1160,7 @@ bool Fs8FileSystem::getFileBytes(const char * file_name, void * to_buffer, int64
 
     if (ZSTD_isError(res))
     {
-      Fs8FileSystem::errorLogCallback("ZTDS decompression error (1)");
+      Fs8FileSystem::errorLogCallback((string("ZSTD decompression error1: ") + ZSTD_getErrorName(res)).c_str());
       return false;
     }
 
@@ -1195,7 +1195,7 @@ bool Fs8FileSystem::getFileBytes(const char * file_name, void * to_buffer, int64
 
     if (ZSTD_isError(res))
     {
-      Fs8FileSystem::errorLogCallback("ZTDS decompression error (2)");
+      Fs8FileSystem::errorLogCallback((string("ZSTD decompression error2: ") + ZSTD_getErrorName(res)).c_str());
       return false;
     }
 
@@ -1231,9 +1231,9 @@ bool Fs8FileSystem::getFileBytes(const char * file_name, vector<char> & out_file
   }
   else
   {
-    out_file_bytes.resize(fileSize + 1);
+    out_file_bytes.resize(fileSize);
   }
-  bool res = getFileBytes(file_name, &out_file_bytes[0], fileSize);
+  bool res = fileSize ? getFileBytes(file_name, &out_file_bytes[0], fileSize) : true;
   if (!res)
     out_file_bytes.clear();
   return res;
