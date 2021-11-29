@@ -115,7 +115,7 @@ int main(int argc, char ** argv)
   if (!Fs8FileSystem::createFs8FromFiles(initialDir, fileNames, outFileName, compression_level, hex_output, &ignoreList))
     return 1;
 
-  printf("Files successfully packed with compression level %d\n", int(fileNames.size()), compression_level);
+  printf("Files successfully packed with compression level %d\n", compression_level);
 
   return 0;
 }

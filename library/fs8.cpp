@@ -856,15 +856,18 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<string> &
   return createFs8FromFiles(dir_, namePairs, out_file_name_utf8_, compression_level, write_as_hex32, ignore_list);
 }
 
-static bool recurseve_find_files(const string & dir, vector<string> & res)
+static bool recurseve_find_files(string dir, vector<string> & res)
 {
+  if (!dir.empty() && dir.back() != '\\' && dir.back() != '/')
+    dir += "/";
+
   error_code errCode;
   for (auto & dirEntry : filesystem::recursive_directory_iterator::recursive_directory_iterator(string_to_wstring(dir), errCode))
     if (dirEntry.is_regular_file())
     {
       string s = wstring_to_string(dirEntry.path().generic_wstring());
       if (s.length() > dir.length())
-        res.push_back(string(s.c_str() + dir.length() + 1));
+        res.push_back(string(s.c_str() + dir.length()));
     }
 
   if (errCode.value() != 0)
@@ -873,8 +876,11 @@ static bool recurseve_find_files(const string & dir, vector<string> & res)
   return errCode.value() == 0;
 }
 
-static bool expand_file_masks(const string & dir, vector<pair<string, string>> & file_names)
+static bool expand_file_masks(string dir, vector<pair<string, string>> & file_names)
 {
+  if (!dir.empty() && dir.back() != '\\' && dir.back() != '/')
+    dir += "/";
+
   for (int i = (file_names.size()) - 1; i >= 0; i--)
   {
     pair<string, string> namePair = file_names[i];
@@ -899,8 +905,14 @@ static bool expand_file_masks(const string & dir, vector<pair<string, string>> &
         return false;
       }
 
+      if (archiveName.empty())
+        archiveName = name;
+
+      if (archiveName == "/" || archiveName == "./")
+        archiveName = "";
+
       for (auto & f : found)
-        file_names.push_back(make_pair(f, archiveName + f));
+        file_names.push_back(make_pair(dir + name + f, archiveName + f));
     }
   }
 
@@ -949,6 +961,20 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
     for (auto & ch : name)
       if (ch == '\\')
         ch = '/';
+
+    if (!archiveName.empty())
+      if (archiveName.back() == '/' || archiveName.back() == '\\')
+      {
+        string fn = name;
+        if (const char * p = strrchr(fn.c_str(), '/'))
+          fn = p + 1;
+        archiveName += fn;
+      }
+
+    for (auto & ch : archiveName)
+      if (ch == '\\')
+        ch = '/';
+
 
     if (ignore_list && !name.empty())
     {
