@@ -685,7 +685,7 @@ static struct PartitionsContainer
       return nullptr;
     }
 
-    vector<char> fileNamesData((const char *)mem + fileNamesOffset, (const char *)mem + fileNamesOffset + fnlen);
+    vector<char> fileNamesData((const char *)mem + fileNamesOffset, (const char *)mem + fileNamesOffset + fnlen + 4);
 
     Fs8Partition * partition = new Fs8Partition;
     partition->isInMemory = true;
