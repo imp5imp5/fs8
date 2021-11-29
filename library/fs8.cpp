@@ -437,8 +437,11 @@ struct Fs8Partition
     for (auto inf : fileInfos)
     {
       char * decompressedFile = (char *)inf.second.getDecompressedPtr();
-      delete[] decompressedFile;
-      inf.second.resetPtr();
+      if (decompressedFile)
+      {
+        delete[] decompressedFile;
+        inf.second.resetPtr();
+      }
     }
 
     if (fileDescriptor)
@@ -463,8 +466,11 @@ static struct PartitionsContainer
         for (auto & info : p->fileInfos)
         {
           char * ptr = (char *)info.second.getDecompressedPtr();
-          delete[] ptr;
-          info.second.resetPtr();
+          if (ptr)
+          {
+            delete[] ptr;
+            info.second.resetPtr();
+          }
         }
       }
       delete p;
@@ -658,10 +664,7 @@ static struct PartitionsContainer
 
     for (Fs8Partition * p : partitions)
       if (mem == p->inMemoryDataPtr)
-      {
-        p->useCount++;
         return p;
-      }
 
     int64_t fileNamesOffset = check_header_get_file_names_offset((const char *)mem);
     if (fileNamesOffset <= 0)
@@ -709,7 +712,7 @@ static struct PartitionsContainer
 
   void unusePartition(Fs8Partition * partition)
   {
-    if (!partition)
+    if (!partition || partition->isInMemory)
       return;
 
     lock_guard<recursive_mutex> lock(partitions_lock);
@@ -718,7 +721,7 @@ static struct PartitionsContainer
     if (partition->useCount < 0)
       Fs8FileSystem::errorLogCallback("Internal error (partition->useCount < 0)");
 
-    if (partition->useCount <= 0 && partition->fileDescriptor)
+    if (partition->useCount <= 0)
     {
       fclose(partition->fileDescriptor);
       partition->fileDescriptor = nullptr;
