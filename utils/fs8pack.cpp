@@ -4,6 +4,14 @@
 static bool hex_output = false;
 static int compression_level = 1;
 
+static char * skip_utf8_bom(char * ptr)
+{
+  if (ptr && (uint8_t)ptr[0] == 0xEF && (uint8_t)ptr[1] == 0xBB && (uint8_t)ptr[2] == 0xBF)
+    return ptr + 3;
+  else
+    return ptr;
+}
+
 void usage()
 {
   printf("Usage: fs8pack [--hex] [--level:N] [--list:list-of-files.txt] [--ignore:ignore-name] [--ignore-dot-name] <initial-directory> <out-file-name.fs8>\n"
@@ -72,9 +80,12 @@ int main(int argc, char ** argv)
         *p = 0;
       if (char * p = strchr(buf, '\r'))
         *p = 0;
-      if (strlen(buf) > 0)
+
+      char * fname = skip_utf8_bom(buf);
+
+      if (strlen(fname) > 0)
       {
-        if (char * p = strchr(buf, ' '))
+        if (char * p = strchr(fname, ' '))
         {
           while (*p == ' ')
           {
@@ -85,14 +96,14 @@ int main(int argc, char ** argv)
           if (char * sp = strchr(p, ' '))
             *sp = 0;
 
-          fileNames.push_back(make_pair(string(buf), string(p)));
+          fileNames.push_back(make_pair(string(fname), string(p)));
         }
         else
         {
-          if (char * sp = strchr(buf, ' '))
+          if (char * sp = strchr(fname, ' '))
             *sp = 0;
 
-          fileNames.push_back(make_pair(string(buf), string()));
+          fileNames.push_back(make_pair(string(fname), string()));
         }
       }
     }

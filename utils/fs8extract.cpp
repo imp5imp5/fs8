@@ -2,6 +2,14 @@
 #include "../library/fs8.cpp"
 
 
+static char * skip_utf8_bom(char * ptr)
+{
+  if (ptr && (uint8_t)ptr[0] == 0xEF && (uint8_t)ptr[1] == 0xBB && (uint8_t)ptr[2] == 0xBF)
+    return ptr + 3;
+  else
+    return ptr;
+}
+
 static bool is_dir_exist(const string& path)
 {
 #if defined(_WIN32)
@@ -168,7 +176,7 @@ int main(int argc, char ** argv)
       if (char * p = strchr(buf, ' '))
         *p = 0;
       if (strlen(buf) > 0)
-        fileNames.push_back(string(buf));
+        fileNames.push_back(string(skip_utf8_bom(buf)));
     }
 
     fclose(listf);
