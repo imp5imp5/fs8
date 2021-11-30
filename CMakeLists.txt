@@ -24,9 +24,9 @@ file(GLOB SRC_EXTRACT
 
 
 ExternalProject_Add( zstd
-	GIT_REPOSITORY https://github.com/facebook/zstd.git
-	GIT_TAG v1.5.0
-	SOURCE_SUBDIR build/cmake
+  GIT_REPOSITORY https://github.com/facebook/zstd.git
+  GIT_TAG v1.5.0
+  SOURCE_SUBDIR build/cmake
   CMAKE_ARGS
     -DCMAKE_INSTALL_PREFIX=bin
     -DCMAKE_INSTALL_LIBDIR=bin_lib
@@ -63,6 +63,6 @@ if(WIN32)
 endif()
 
 if(UNIX)
-  target_link_libraries(fs8pack zstd_static pthread)
-  target_link_libraries(fs8extract zstd_static pthread)
+  target_link_libraries(fs8pack libzstd.a pthread)
+  target_link_libraries(fs8extract libzstd.a pthread)
 endif()

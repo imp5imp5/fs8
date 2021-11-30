@@ -12,8 +12,9 @@
 #include <algorithm>
 #include <codecvt>
 #include <thread>
-#include "fs8.h"
 #include <filesystem>
+#include <cstring>
+#include "fs8.h"
 
 
 #define FS_MAX_FILENAMES_BINARY_SIZE (64 << 20) // max file table = 16 MB (~320000 files)
@@ -54,6 +55,7 @@ string get_absolute_file_name(const char * file_name_utf8)
 
 #else
 #include <unistd.h>
+#include <sys/stat.h>
 
 string get_absolute_file_name(const char * file_name_utf8)
 {
@@ -107,7 +109,7 @@ string get_absolute_file_name(const char * file_name_utf8)
 
 #else
   #define FS_FSEEK fseeko64
-  #define FS_FTELL fseeko64
+  #define FS_FTELL ftello64
   static FILE * FS_FOPEN(const char * file_name_utf8, const char * mode)
   {
     if (!file_name_utf8 || !mode)
@@ -865,10 +867,10 @@ static bool recurseve_find_files(string dir, vector<string> & res)
     dir += "/";
 
   error_code errCode;
-  for (auto & dirEntry : filesystem::recursive_directory_iterator::recursive_directory_iterator(string_to_wstring(dir), errCode))
-    if (dirEntry.is_regular_file())
+  for (filesystem::recursive_directory_iterator dirEntry(string_to_wstring(dir), errCode), end; dirEntry != end; ++dirEntry)
+    if (dirEntry->is_regular_file())
     {
-      string s = wstring_to_string(dirEntry.path().generic_wstring());
+      string s = wstring_to_string(dirEntry->path().generic_wstring());
       if (s.length() > dir.length())
         res.push_back(string(s.c_str() + dir.length()));
     }
