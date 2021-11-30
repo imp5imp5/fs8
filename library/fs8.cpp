@@ -1115,7 +1115,7 @@ void Fs8FileSystem::getAllFileNames(vector<string> & out_file_names)
 }
 
 
-bool Fs8FileSystem::isFileExists(const char * file_name)
+bool Fs8FileSystem::fileExists(const char * file_name)
 {
   if (!partition || !file_name)
     return false;

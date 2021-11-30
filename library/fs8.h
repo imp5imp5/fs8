@@ -29,7 +29,7 @@ struct Fs8FileSystem
   bool initalizeFromFile(const char * fs8_file_name_utf8);
   bool initalizeFromMemory(void * data, int64_t size = -1);
   void getAllFileNames(std::vector<std::string> & out_file_names);
-  bool isFileExists(const char * file_name);
+  bool fileExists(const char * file_name);
   int64_t getFileSize(const char * file_name);
   bool getFileBytes(const char * file_name, std::vector<char> & out_file_bytes, bool addFinalZero = false);
   bool getFileBytes(const char * file_name, void * to_buffer, int64_t buffer_size);
