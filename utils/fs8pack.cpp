@@ -90,7 +90,7 @@ int main(int argc, char ** argv)
           while (*p == ' ')
           {
             *p = 0;
-            *p++;
+            p++;
           }
 
           if (char * sp = strchr(p, ' '))

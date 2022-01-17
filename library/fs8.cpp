@@ -70,7 +70,7 @@ string get_absolute_file_name(const char * file_name_utf8)
 
 
 
-#ifdef _WIN32
+#if defined(_WIN32)
   #define FS_FSEEK _fseeki64
   #define FS_FTELL _ftelli64
 
@@ -107,7 +107,40 @@ string get_absolute_file_name(const char * file_name_utf8)
     MoveFileW(wNameFrom.c_str(), wNameTo.c_str());
   }
 
-#else
+#elif defined(__APPLE__)
+  #define FS_FSEEK fseeko
+  #define FS_FTELL ftello
+  static FILE * FS_FOPEN(const char * file_name_utf8, const char * mode)
+  {
+    if (!file_name_utf8 || !mode)
+      return nullptr;
+    FILE * f = fopen(file_name_utf8, mode);
+    // ? flock(f, LOCK_EX);
+    return f;
+  }
+
+  static uint64_t get_file_time(const char * file_name)
+  {
+    if (!file_name)
+      return 0;
+    struct stat buf;
+    if (!stat(file_name, &buf))
+      return uint64_t(buf.st_mtime);
+    return 0;
+  }
+
+  void FS_UNLINK(const char * file_name_utf8)
+  {
+    unlink(file_name_utf8);
+  }
+
+  void FS_RENAME(const char * file_from_utf8, const char * file_dest_utf8)
+  {
+    rename(file_from_utf8, file_dest_utf8);
+  }
+
+#else // linux
+
   #define FS_FSEEK fseeko64
   #define FS_FTELL ftello64
   static FILE * FS_FOPEN(const char * file_name_utf8, const char * mode)
@@ -827,7 +860,7 @@ bool Fs8FileSystem::checkFs8FileSystemSignatures(const char * fs8_file_name_utf8
     uint32_t hash;
   } s;
 
-  if (!fread(&s, 8, 1, f) != 1)
+  if (fread(&s, 8, 1, f) != 1)
   {
     fclose(f);
     return false;
@@ -883,7 +916,7 @@ static bool recurseve_find_files(string dir, vector<string> & res)
 
 static bool expand_file_masks(string dir, vector<pair<string, string>> & file_names)
 {
-  if (!dir.empty() && dir.back() != '\\' && dir.back() != '/')
+  if (!dir.empty() && (dir.back() != '\\' && dir.back() != '/'))
     dir += "/";
 
   for (int i = (file_names.size()) - 1; i >= 0; i--)
@@ -938,7 +971,7 @@ bool Fs8FileSystem::createFs8FromFiles(const char * dir_, const vector<pair<stri
 
   FileInfosMap fs_file_infos;
 
-  if (!dir.empty() && dir.back() == '\\' || dir.back() == '/')
+  if (!dir.empty() && (dir.back() == '\\' || dir.back() == '/'))
     dir.pop_back();
 
   FILE * outf = FS_FOPEN(out_file_name_utf8.c_str(), "wb");
