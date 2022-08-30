@@ -18,6 +18,7 @@
 
 
 #define FS_MAX_FILENAMES_BINARY_SIZE (64 << 20) // max file table = 16 MB (~320000 files)
+#define FS_MAX_FILE_SIZE (1 << 30)              // max file size 1 GB
 #define FS_KEEP_IN_MEMORY_THRESHOLD (64 << 10)  // small files (< 64 KB) will be cached in memory
 #define FS_MAX_PARTITION 100
 #define FS_UNLOCK_FILE_AFTER_MS 500             // call fclose after 500 msec after last access
@@ -695,6 +696,12 @@ static struct PartitionsContainer
       return nullptr;
     }
 
+    if (size < 24)
+    {
+      Fs8FileSystem::errorLogCallback("Invalid partition size");
+      return nullptr;
+    }
+
     lock_guard<recursive_mutex> lock(partitions_lock);
 
     for (Fs8Partition * p : partitions)
@@ -702,13 +709,13 @@ static struct PartitionsContainer
         return p;
 
     int64_t fileNamesOffset = check_header_get_file_names_offset((const char *)mem);
-    if (fileNamesOffset <= 0)
+    if (fileNamesOffset <= 0 || fileNamesOffset >= size)
     {
       Fs8FileSystem::errorLogCallback("Not FS8 file");
       return nullptr;
     }
 
-    if (size > 0 && fileNamesOffset + 4 > size)
+    if (size > 0 && fileNamesOffset + 4 >= size)
     {
       Fs8FileSystem::errorLogCallback("Invalid file format");
       return nullptr;
@@ -1193,6 +1200,15 @@ bool Fs8FileSystem::getFileBytes(const char * file_name, void * to_buffer, int64
   partition->lastAccessTime = chrono::steady_clock::now();
 
   auto it = partition->fileInfos.find(fname);
+
+  if (it->second.decompressedSize < 0 || it->second.decompressedSize > FS_MAX_FILE_SIZE ||
+    it->second.compressedSize < 0 || it->second.compressedSize > FS_MAX_FILE_SIZE ||
+    it->second.offsetInFile < 24)
+  {
+    Fs8FileSystem::errorLogCallback("Invalid file postion");
+    return false;
+  }
+
   if (it == partition->fileInfos.end() || it->second.decompressedSize > buffer_size)
     return false;
 
@@ -1288,6 +1304,19 @@ bool Fs8FileSystem::getFileBytes(const char * file_name, vector<char> & out_file
 
   lock_guard<recursive_mutex> lock(partition->decompression_lock);
   int64_t fileSize = getFileSize(file_name);
+
+  if (fileSize > FS_MAX_FILE_SIZE)
+  {
+    Fs8FileSystem::errorLogCallback("File is too large");
+    return false;
+  }
+
+  if (fileSize < 0)
+  {
+    Fs8FileSystem::errorLogCallback("Invalid file size");
+    return false;
+  }
+
   if (addFinalZero)
   {
     out_file_bytes.resize(fileSize + 1);
